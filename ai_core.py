@@ -1,32 +1,22 @@
 ## ai_core.py
 from __future__ import annotations
-import re
-import math
 import json
-from dataclasses import dataclass
-from typing import List, Tuple, Dict, Iterable
+from typing import Dict, Iterable
 
 import spacy
 from spacy.language import Language
 from spacy.tokens import Doc
 
 import pandas as pd
-import numpy as np
 from transformers import pipeline
-import networkx as nx
-import matplotlib.pyplot as plt
 
-
-@dataclass
-class ActionTriple:
-    subject: str
-    verb: str
-    object: str
-    sent_id: int
+from models import ActionTriple
+from visualization import Visualizer
 
 
 class LiteraryAI:
-    def __init__(self, prefer_trf: bool = True, gpu: bool = False, max_doc_len: int | None = None):
+    def __init__(self, prefer_trf: bool = True, gpu: bool = False, max_doc_len: int | None = None,
+                 visualizer: Visualizer | None = None):
         self.nlp = self._load_spacy(prefer_trf)
         self.emotion = pipeline(
             "text-classification",
@@ -36,6 +26,7 @@ class LiteraryAI:
             truncation=True
         )
         self.max_doc_len = max_doc_len
+        self.visualizer = visualizer or Visualizer()
 
     def _load_spacy(self, prefer_trf: bool) -> Language:
         tried = []
@@ -129,91 +120,6 @@ class LiteraryAI:
 
 
   
-    # ---------- Graph build & save ----------
-    def build_action_graph(self, triples: Iterable[ActionTriple]) -> nx.DiGraph:
-        G = nx.DiGraph()
-        for t in triples:
-            s = t.subject.strip()
-            o = t.object.strip()
-            v = t.verb
-            if s and o:
-                G.add_edge(s, o, label=v, sent_id=t.sent_id)
-        return G
-
-    # ---------- Plotting helpers ----------
-
-    def build_action_graph(self, triples: Iterable[ActionTriple], min_count: int = 2) -> nx.DiGraph:
-        # Считаем частоту появления субъекта и объекта
-        subjects = {}
-        objects = {}
-        for t in triples:
-            subjects[t.subject] = subjects.get(t.subject, 0) + 1
-            objects[t.object] = objects.get(t.object, 0) + 1
-
-        # Строим граф только из частых элементов
-        G = nx.DiGraph()
-        for t in triples:
-            if subjects[t.subject] < min_count or objects[t.object] < min_count:
-                continue
-            s, o, v = t.subject.strip(), t.object.strip(), t.verb
-            if s and o:
-                G.add_edge(s, o, label=v, sent_id=t.sent_id)
-        return G
-
-
-    def plot_emotion_curve(self, curve_df: pd.DataFrame, out_path: str):
-        """Строим итоговую кривую по 7 эмоциям"""
-        if curve_df.empty:
-            return
-        plt.figure(figsize=(8, 4))
-        plt.plot(curve_df["emotion"], curve_df["tone"],
-                 color="purple", marker="o", linewidth=2)
-        plt.ylim(-1.05, 1.05)
-        plt.axhline(0, color="gray", linestyle="--", linewidth=1)
-        plt.title("Overall Emotional Tone")
-        plt.ylabel("Tone (-1 negative, +1 positive)")
-        plt.grid(alpha=0.3)
-        plt.tight_layout()
-        plt.savefig(out_path, dpi=160)
-        plt.close()
-
-    def plot_top_characters(self, char_df: pd.DataFrame, out_path: str, top_n: int = 20):
-        if char_df.empty:
-            return
-        df = char_df.head(top_n)
-        plt.figure(figsize=(10, 6))
-        plt.barh(df["character"], df["count"])  # не задаємо кольори
-        plt.gca().invert_yaxis()
-        plt.xlabel("Mentions")
-        plt.title("Top Characters")
-        plt.tight_layout()
-        plt.savefig(out_path, dpi=160)
-        plt.close()
-    
-    def plot_action_graph(self, G: nx.DiGraph, out_path: str):
-        """Визуализация графа действий"""
-        if G.number_of_nodes() == 0:
-            return
-        plt.figure(figsize=(10, 7))
-        pos = nx.spring_layout(G, seed=42, k=0.6)
-        nx.draw(
-            G, pos,
-            with_labels=True,
-            node_size=1800,
-            font_size=10,
-            font_weight='bold',
-            node_color="#b3d9ff",
-            edgecolors="black",
-            linewidths=0.8,
-        )
-        labels = nx.get_edge_attributes(G, 'label')
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_color="purple")
-        plt.title("Action Graph (who → what → whom)")
-        plt.tight_layout()
-        plt.savefig(out_path, dpi=160)
-        plt.close()
-
-
     # ---------- End-to-end ----------
     def analyze(self, text: str, out_dir: str) -> Dict[str, str]:
         doc = self.read_text(text)
@@ -221,18 +127,18 @@ class LiteraryAI:
         char_df = self.extract_characters(doc)
         char_csv = f"{out_dir}/characters.csv"
         char_df.to_csv(char_csv, index=False)
-        self.plot_top_characters(char_df, f"{out_dir}/characters.png")
+        self.visualizer.plot_top_characters(char_df, f"{out_dir}/characters.png")
         # SVO
         triples = self.extract_svo(doc)
         svo_csv = f"{out_dir}/actions.csv"
         pd.DataFrame([t.__dict__ for t in triples]).to_csv(svo_csv, index=False)
-        G = self.build_action_graph(triples)
-        self.plot_action_graph(G, f"{out_dir}/actions_graph.png")
+        G = self.visualizer.build_action_graph(triples)
+        self.visualizer.plot_action_graph(G, f"{out_dir}/actions_graph.png")
         # Emotions
         curve = self.emotion_curve(doc)
         emo_csv = f"{out_dir}/emotion_curve.csv"
         curve.to_csv(emo_csv, index=False)
-        self.plot_emotion_curve(curve, f"{out_dir}/emotion_curve.png")
+        self.visualizer.plot_emotion_curve(curve, f"{out_dir}/emotion_curve.png")
         # Summary JSON
         summary = {
             "characters_csv": char_csv,
