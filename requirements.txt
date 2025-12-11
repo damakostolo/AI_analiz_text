@@ -1,0 +1,11 @@
+spacy>=3.7
+transformers>=4.44
+torch>=2.2 ; platform_system != "Darwin" or platform_machine != "arm64"
+torch>=2.3 ; platform_system == "Darwin" and platform_machine == "arm64"
+networkx>=3.2
+matplotlib>=3.8
+pandas>=2.2
+numpy>=1.26
+python-docx>=1.1
+pdfminer.six>=20240706
+tqdm>=4.66

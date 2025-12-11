@@ -1,0 +1,8 @@
+{
+  "characters_csv": "results/characters.csv",
+  "characters_png": "results/characters.png",
+  "actions_csv": "results/actions.csv",
+  "actions_graph_png": "results/actions_graph.png",
+  "emotion_curve_csv": "results/emotion_curve.csv",
+  "emotion_curve_png": "results/emotion_curve.png"
+}
